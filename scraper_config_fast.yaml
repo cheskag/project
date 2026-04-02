@@ -1,0 +1,343 @@
+# Production Scraper Configuration
+# ===============================
+
+# Performance Settings - OPTIMIZED for speed without affecting accuracy
+max_concurrent_sources: 12  # OPTIMIZED: Increased from 5 to 12 (more parallel processing)
+max_concurrent_requests_per_source: 3
+request_timeout: 20.0  # OPTIMIZED: Reduced from 30s to 20s (still safe for slow sites)
+page_load_timeout: 25.0  # OPTIMIZED: Reduced from 45s to 25s (page_load_strategy='eager' makes this safe)
+
+# Rate Limiting - OPTIMIZED
+min_delay_between_requests: 0.5  # OPTIMIZED: Reduced from 1s to 0.5s
+max_delay_between_requests: 1.5  # OPTIMIZED: Reduced from 3s to 1.5s
+cycle_interval: 15.0  # OPTIMIZED: Reduced from 30s to 15s (faster cycles)
+
+# Circuit Breaker Settings
+failure_threshold: 3  # REDUCED from 5 to 3 for quicker skip
+recovery_timeout: 60.0  # REDUCED from 300s to 60s
+half_open_max_calls: 2  # REDUCED from 3 to 2
+
+# Data Processing
+max_pages_per_source: 2  # REDUCED from 5 to 2 for faster scraping
+max_elements_per_page: 50  # REDUCED from 100 to 50 for less processing
+min_content_length: 20
+
+# Database Settings
+# SECURITY: Load from environment variable, not hardcoded
+mongodb_uri: "${MONGO_URI}"
+database_name: "dataset4JADC"
+collection_name: "cryptogauge"
+
+# Monitoring
+metrics_port: 8000
+log_level: "INFO"
+
+# User Agents for Anti-Detection
+user_agents:
+  - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+  - "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+  - "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+# Sources Configuration
+sources:
+  # News Sources
+  - name: "CoinDesk"
+    url: "https://www.coindesk.com"
+    source_type: "news"
+    enabled: true
+    priority: 1
+    max_pages: 3
+    custom_selectors:
+      article_links: ["article a", "a[href*='/news/']"]
+      content: ["article .content", ".article-body"]
+    
+  - name: "Decrypt"
+    url: "https://decrypt.co"
+    source_type: "news"
+    enabled: true
+    priority: 1
+    max_pages: 3
+    
+  - name: "Bankless"
+    url: "https://bankless.com"
+    source_type: "news"
+    enabled: true
+    priority: 1
+    max_pages: 2
+    
+  - name: "BeInCrypto"
+    url: "https://beincrypto.com"
+    source_type: "news"
+    enabled: true
+    priority: 2
+    max_pages: 3
+    
+  - name: "TheBlock"
+    url: "https://www.theblock.co"
+    source_type: "news"
+    enabled: true
+    priority: 2
+    max_pages: 3
+    
+  - name: "Cointelegraph"
+    url: "https://cointelegraph.com"
+    source_type: "news"
+    enabled: true
+    priority: 1
+    max_pages: 3
+    
+  - name: "CryptoSlate"
+    url: "https://cryptoslate.com"
+    source_type: "news"
+    enabled: true
+    priority: 2
+    max_pages: 3
+    
+  - name: "BitcoinMagazine"
+    url: "https://bitcoinmagazine.com"
+    source_type: "news"
+    enabled: true
+    priority: 2
+    max_pages: 3
+    
+  - name: "CryptoNews"
+    url: "https://cryptonews.com"
+    source_type: "news"
+    enabled: true
+    priority: 2
+    max_pages: 3
+    
+  - name: "Blockworks"
+    url: "https://blockworks.co"
+    source_type: "news"
+    enabled: true
+    priority: 2
+    max_pages: 3
+    
+  - name: "UToday"
+    url: "https://u.today"
+    source_type: "news"
+    enabled: true
+    priority: 3
+    max_pages: 3
+
+  # Twitter Sources
+  - name: "VitalikButerin"
+    url: "VitalikButerin"
+    source_type: "twitter"
+    enabled: true
+    priority: 1
+    
+  - name: "ElonMusk"
+    url: "elonmusk"
+    source_type: "twitter"
+    enabled: true
+    priority: 1
+    
+  - name: "AndreasAntonopoulos"
+    url: "aantonop"
+    source_type: "twitter"
+    enabled: true
+    priority: 2
+    
+  - name: "MichaelSaylor"
+    url: "saylor"
+    source_type: "twitter"
+    enabled: true
+    priority: 2
+    
+  - name: "ChrisDixon"
+    url: "cdixon"
+    source_type: "twitter"
+    enabled: true
+    priority: 2
+    
+  - name: "MarcAndreessen"
+    url: "pmarca"
+    source_type: "twitter"
+    enabled: true
+    priority: 2
+    
+  - name: "CryptoGodJohn"
+    url: "CryptoGodJohn"
+    source_type: "twitter"
+    enabled: true
+    priority: 3
+    
+  - name: "DonaldTrump"
+    url: "realDonaldTrump"
+    source_type: "twitter"
+    enabled: true
+    priority: 3
+
+# Site-specific configurations
+site_configs:
+  coindesk.com:
+    pagination_pattern: "?page={page}"
+    content_selectors:
+      - "article .content"
+      - ".article-body"
+      - "article p"
+    
+  decrypt.co:
+    pagination_pattern: "?page={page}"
+    content_selectors:
+      - ".post-content"
+      - "article p"
+    
+  bankless.com:
+    pagination_pattern: "/page/{page}"
+    content_selectors:
+      - ".post-content"
+      - "article p"
+    
+  beincrypto.com:
+    pagination_pattern: "/page/{page}"
+    content_selectors:
+      - ".post-content"
+      - "article p"
+    
+  theblock.co:
+    pagination_pattern: "/page/{page}"
+    content_selectors:
+      - ".post-content"
+      - "article p"
+    
+  cointelegraph.com:
+    pagination_pattern: "/page/{page}"
+    content_selectors:
+      - ".post-content"
+      - "article p"
+    
+  cryptoslate.com:
+    pagination_pattern: "/page/{page}"
+    content_selectors:
+      - ".post-content"
+      - "article p"
+    
+  bitcoinmagazine.com:
+    pagination_pattern: "/page/{page}"
+    content_selectors:
+      - ".post-content"
+      - "article p"
+    
+  cryptonews.com:
+    pagination_pattern: "/page/{page}"
+    content_selectors:
+      - ".post-content"
+      - "article p"
+    
+  blockworks.co:
+    pagination_pattern: "/page/{page}"
+    content_selectors:
+      - ".post-content"
+      - "article p"
+    
+  u.today:
+    pagination_pattern: "/page/{page}"
+    content_selectors:
+      - ".post-content"
+      - "article p"
+
+# Content filtering rules
+content_filters:
+  min_title_length: 10
+  min_content_length: 50
+  max_content_length: 50000
+  
+  # Keywords to exclude
+  exclude_keywords:
+    - "press release"
+    - "sponsored"
+    - "advertisement"
+    - "promotion"
+    - "partnership announcement"
+    - "paid content"
+  
+  # URL patterns to exclude
+  exclude_url_patterns:
+    - "/about"
+    - "/privacy"
+    - "/terms"
+    - "/cookies"
+    - "/newsletter"
+    - "/subscribe"
+    - "/sponsored"
+    - "/press-releases"
+    - "/press"
+    - "/advertise"
+    - "/jobs"
+    - "/careers"
+    - "/contact"
+    - "/consent"
+    - "/preferences"
+    - "/rss"
+    - "/sitemap"
+    - "/feed"
+    - "/api"
+    - "/submit"
+    - "/request"
+    - "/partners"
+    - "/mentions"
+    - "/editorial-policy"
+    - "/login"
+    - "/register"
+    - "/signin"
+    - "/signup"
+    - "/price/"
+    - "/prices"
+    - "/rankings"
+    - "/category/"
+    - "/tag/"
+    - "/type/"
+    - "/author/"
+    - "/bonus-hunter"
+    - "/top-picks"
+    - "/special-edition"
+    - "/crypto-bonus/"
+    - "/price-indexes"
+    - "/price-prediction"
+    - "/guides/"
+    - "/how-to/"
+    - "/tutorial/"
+    - "/learn/"
+    - "/compare/"
+    - "/vs-"
+    - "/best-"
+    - "/top-10-"
+    - "/wallet/"
+    - "/exchange/"
+    - "/casino/"
+    - "/betting/"
+    - "/events/"
+    - "/webinar/"
+    - "/conference/"
+
+# Sentiment analysis configuration
+sentiment_analysis:
+  enabled: true
+  model_path: "models/lstm_sentiment_model"
+  confidence_threshold: 0.6
+  
+# Monitoring and alerting
+monitoring:
+  enable_prometheus: true
+  enable_health_checks: true
+  health_check_interval: 30
+  
+  # Alert thresholds
+  alerts:
+    low_success_rate_threshold: 0.1  # 10%
+    high_error_rate_threshold: 0.2   # 20%
+    circuit_breaker_open_threshold: 3
+    
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "json"
+  file: "scraper.log"
+  max_size: "100MB"
+  backup_count: 5
+
+
+
