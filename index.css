@@ -1,0 +1,140 @@
+import React from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { clearSession, recordActivity } from '../utils/session';
+
+const hasToken = () => {
+  const token = localStorage.getItem('token');
+  return !!token && token !== 'undefined' && token !== 'null';
+};
+
+const isAdmin = () => {
+  const adminStatus = localStorage.getItem('isAdmin');
+  return adminStatus === 'true';
+};
+
+const Navbar = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isDashboardPage = location.pathname === '/dashboard';
+  
+  const handleLogout = () => {
+    clearSession();
+    navigate('/auth', { replace: true });
+  };
+  
+  const logoutButtonStyle = {
+    background: '#fff',
+    color: '#3b82f6',
+    border: 'none',
+    borderRadius: 6,
+    padding: '8px 18px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+    transition: 'all 0.2s ease',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+  };
+
+  return (
+    <nav style={{
+      width: '100%',
+      maxWidth: '100vw',
+      background: 'linear-gradient(90deg, #0f172a, #3b82f6 80%)',
+      padding: '1rem 2rem',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      color: '#fff',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
+      position: 'relative',
+      boxSizing: 'border-box',
+      overflow: 'visible'
+    }}>
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: 16, 
+        flexShrink: 0,
+        minWidth: 0
+      }}>
+        <Link
+          to={hasToken() ? "/dashboard" : "/auth"}
+          style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', color: '#fff', flexShrink: 0 }}
+          onClick={recordActivity}
+        >
+          <img
+            src="/cryptogaugelogo.png"
+            alt="CryptoGauge logo"
+            style={{ width: 44, height: 44, objectFit: 'contain', marginRight: 12, cursor: 'pointer', flexShrink: 0 }}
+          />
+          <span style={{ fontWeight: 'bold', fontSize: 22, whiteSpace: 'nowrap' }}>CRYPTOGAUGE</span>
+        </Link>
+      </div>
+      <div style={{ 
+        display: 'flex', 
+        gap: 16, 
+        alignItems: 'center',
+        flexShrink: 0,
+        marginLeft: 'auto',
+        overflow: 'visible',
+        position: 'relative',
+        zIndex: 10,
+        paddingLeft: '1rem'
+      }}>
+        {hasToken() ? (
+          <div style={{ 
+            display: 'flex', 
+            gap: 16, 
+            alignItems: 'center', 
+            flexWrap: 'nowrap',
+            overflow: 'visible',
+            position: 'relative'
+          }}>
+            {!isDashboardPage && (
+              <Link
+                to="/dashboard"
+                style={{ color: '#fff', textDecoration: 'none', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }}
+                onClick={recordActivity}
+              >
+                Home
+              </Link>
+            )}
+            <Link to="/news" style={{ color: '#fff', textDecoration: 'none', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }} onClick={recordActivity}>News</Link>
+            <Link to="/community" style={{ color: '#fff', textDecoration: 'none', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }} onClick={recordActivity}>Community</Link>
+            <Link to="/prediction" style={{ color: '#fff', textDecoration: 'none', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }} onClick={recordActivity}>Prediction</Link>
+            <Link to="/faq" style={{ color: '#fff', textDecoration: 'none', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }} onClick={recordActivity}>FAQ & Tools</Link>
+            <Link to="/crypto-data" style={{ color: '#fff', textDecoration: 'none', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }} onClick={recordActivity}>Crypto Data</Link>
+            {isAdmin() && <Link to="/admin" style={{ color: '#fff', textDecoration: 'none', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }} onClick={recordActivity}>Admin</Link>}
+            <button 
+              onClick={handleLogout} 
+              style={{
+                ...logoutButtonStyle,
+                position: 'relative',
+                zIndex: 1000,
+                marginLeft: '0'
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.background = '#f3f4f6';
+                e.target.style.transform = 'scale(1.05)';
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.background = '#fff';
+                e.target.style.transform = 'scale(1)';
+              }}
+            >
+              Logout
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexShrink: 0 }}>
+            <Link to="/login" style={{ color: '#fff', textDecoration: 'none', fontWeight: 500, whiteSpace: 'nowrap' }}>Login</Link>
+            <Link to="/register" style={{ color: '#fff', textDecoration: 'none', fontWeight: 500, whiteSpace: 'nowrap' }}>Register</Link>
+          </div>
+        )}
+      </div>
+    </nav>
+  );
+};
+
+export default Navbar;

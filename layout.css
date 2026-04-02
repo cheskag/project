@@ -1,0 +1,348 @@
+import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
+
+// Configure axios with a timeout
+axios.defaults.timeout = 10000; // 10 seconds
+axios.defaults.baseURL = 'http://localhost:5000';
+
+const validateEmail = email => /\S+@\S+\.\S+/.test(email);
+const validatePassword = password => {
+  return {
+    length: password.length >= 8,
+    upper: /[A-Z]/.test(password),
+    lower: /[a-z]/.test(password),
+    number: /[0-9]/.test(password),
+    special: /[^A-Za-z0-9]/.test(password)
+  };
+};
+
+const Register = ({ onClose, onSwitchToLogin }) => {
+  const [form, setForm] = useState({
+    fullname: '', email: '', password: '', confirm: '', phone: '', address: ''
+  });
+  const [recaptchaToken, setRecaptchaToken] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [step, setStep] = useState(1); // 1 for personal info, 2 for credentials
+  const recaptchaRef = useRef(null);
+  const recaptchaWidgetId = useRef(null);
+
+  const passwordChecks = validatePassword(form.password);
+  const emailValid = validateEmail(form.email);
+  const passwordsMatch = form.password === form.confirm;
+
+  const handleChange = e => {
+    const { name, value } = e.target;
+    
+    // Phone number validation - only allow numbers, spaces, hyphens, parentheses, and +
+    if (name === 'phone') {
+      // Only allow digits, spaces, hyphens, parentheses, and plus sign
+      const phoneRegex = /^[0-9\s\-+()]*$/;
+      if (value && !phoneRegex.test(value)) {
+        // Don't update if invalid character
+        return;
+      }
+    }
+    
+    setForm({ ...form, [name]: value });
+  };
+
+  // Initialize reCAPTCHA v2 checkbox
+  useEffect(() => {
+    const loadRecaptcha = () => {
+      if (window.grecaptcha && typeof window.grecaptcha.render === 'function' && recaptchaRef.current) {
+        try {
+          // ALWAYS reset existing widget (handles refresh)
+          if (recaptchaWidgetId.current !== null && window.grecaptcha.reset) {
+            console.log('Resetting existing reCAPTCHA widget');
+            window.grecaptcha.reset(recaptchaWidgetId.current);
+          }
+          
+          recaptchaWidgetId.current = window.grecaptcha.render(recaptchaRef.current, {
+            'sitekey': '6LcIG_0rAAAAAP8EchuEwUAYSEbI8IN2vVaIejQq',
+            'theme': 'dark',
+            'size': 'normal',
+            'callback': (token) => {
+              setRecaptchaToken(token);
+              console.log('reCAPTCHA v2 token received');
+            },
+            'expired-callback': () => {
+              setRecaptchaToken('');
+              console.log('reCAPTCHA v2 expired');
+            }
+          });
+        } catch (err) {
+          console.error('reCAPTCHA render error:', err);
+        }
+      } else {
+        setTimeout(loadRecaptcha, 500);
+      }
+    };
+
+    loadRecaptcha();
+    
+    // Cleanup: reset widget on unmount
+    return () => {
+      if (recaptchaWidgetId.current !== null && window.grecaptcha && window.grecaptcha.reset) {
+        window.grecaptcha.reset(recaptchaWidgetId.current);
+      }
+    };
+  }, []);
+
+  const handleNext = () => {
+    if (!form.fullname || !form.phone || !form.address) {
+      setError('Please fill in all personal information fields');
+      return;
+    }
+    setError('');
+    setStep(2);
+  };
+
+  const handleBack = () => {
+    setError('');
+    setStep(1);
+  };
+
+  const handleSubmit = async e => {
+    e.preventDefault();
+    setError(''); setSuccess('');
+    
+    if (!emailValid) return setError('Invalid email format');
+    if (!Object.values(passwordChecks).every(Boolean)) return setError('Password does not meet requirements');
+    if (!passwordsMatch) return setError('Passwords do not match');
+    
+    // Check if reCAPTCHA v2 checkbox is checked (skip in development on localhost)
+    if (!recaptchaToken) {
+      // Allow bypass in development mode for localhost testing
+      if (process.env.NODE_ENV === 'development' && window.location.hostname === 'localhost') {
+        console.warn('Development: Bypassing reCAPTCHA for localhost');
+        // Continue without token
+      } else {
+        setError('Please complete the reCAPTCHA verification');
+        return;
+      }
+    }
+
+    try {
+      await axios.post('/api/auth/register', { ...form, recaptchaToken: recaptchaToken || 'DEV_LOCALHOST_BYPASS' });
+      
+      // Clear any errors before redirect
+      setError('');
+      setSuccess('Registration successful! Redirecting to login...');
+      setRecaptchaToken('');
+      
+      // Reset reCAPTCHA widget for next use
+      if (recaptchaWidgetId.current !== null && window.grecaptcha && window.grecaptcha.reset) {
+        window.grecaptcha.reset(recaptchaWidgetId.current);
+      }
+      
+      // Use setTimeout to prevent promise rejection during component unmount
+      setTimeout(() => {
+        onSwitchToLogin();
+      }, 1000);
+      
+      // Return early to prevent any further execution
+      return;
+    } catch (err) {
+      setRecaptchaToken('');
+      
+      // Better error handling with null checks
+      if (!err || !err.response) {
+        setError('Cannot connect to server. Is the backend running?');
+      } else {
+        const backendError = err.response.data;
+        if (backendError?.error) {
+          setError(backendError.error);
+        } else if (backendError?.errors && Array.isArray(backendError.errors)) {
+          setError(backendError.errors.map(e => (e.msg || e.message || String(e))).join(', '));
+        } else {
+          setError('Registration failed. Please try again.');
+        }
+        
+        // Only log if it's not a handled error
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[Register] Error handled:', backendError?.error || err.message);
+        }
+      }
+    }
+  };
+
+  return (
+    <div className="auth-shell">
+      <div className="auth-card" role="dialog" aria-modal="true" aria-labelledby="register-heading">
+        <header style={{ display: 'grid', gap: '0.4rem', marginTop: '2rem' }}>
+          <span className="page-header__eyebrow">Step {step} of 2</span>
+          <h2 id="register-heading" style={{ fontSize: '1.75rem', margin: 0 }}>
+            {step === 1 ? 'Create Account' : 'Secure Your Access'}
+          </h2>
+          <p style={{ color: 'var(--text-muted)', margin: 0 }}>
+            {step === 1 ? 'Tell us a bit about yourself to personalise your workspace.' : 'Set a strong password and verify your access.'}
+          </p>
+        </header>
+
+        {step === 1 ? (
+          <form
+            className="auth-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleNext();
+            }}
+          >
+            <div className="input-group">
+              <label htmlFor="register-fullname" className="input-label">Full name</label>
+              <input
+                id="register-fullname"
+                name="fullname"
+                className="auth-input"
+                value={form.fullname}
+                onChange={handleChange}
+                placeholder="Jane Doe"
+                required
+                autoComplete="name"
+              />
+            </div>
+            <div className="input-group">
+              <label htmlFor="register-phone" className="input-label">Phone number</label>
+              <input
+                id="register-phone"
+                name="phone"
+                className="auth-input"
+                value={form.phone}
+                onChange={handleChange}
+                placeholder="e.g. +63 900 000 0000"
+                pattern="[0-9\s\-()+]*"
+                inputMode="tel"
+                required
+                autoComplete="tel"
+              />
+            </div>
+            <div className="input-group">
+              <label htmlFor="register-address" className="input-label">Address</label>
+              <input
+                id="register-address"
+                name="address"
+                className="auth-input"
+                value={form.address}
+                onChange={handleChange}
+                placeholder="Street, City"
+                required
+                autoComplete="street-address"
+              />
+            </div>
+
+            {error && (
+              <div className="empty-state" style={{ borderStyle: 'solid', color: '#f87171' }}>
+                {error}
+              </div>
+            )}
+
+            <div className="page-actions" style={{ justifyContent: 'flex-end' }}>
+              <button type="submit" className="btn btn-primary">Next step</button>
+            </div>
+          </form>
+        ) : (
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <div className="input-group">
+              <label htmlFor="register-email" className="input-label">Email address</label>
+              <input
+                id="register-email"
+                name="email"
+                className="auth-input"
+                type="email"
+                value={form.email}
+                onChange={handleChange}
+                placeholder="you@example.com"
+                required
+                autoComplete="email"
+              />
+              {!emailValid && form.email && (
+                <span style={{ color: '#fbbf24', fontSize: '0.85rem' }}>Invalid email format</span>
+              )}
+            </div>
+
+            <div className="input-group">
+              <label htmlFor="register-password" className="input-label">Password</label>
+              <input
+                id="register-password"
+                name="password"
+                className="auth-input"
+                type="password"
+                value={form.password}
+                onChange={handleChange}
+                placeholder="Create a strong password"
+                required
+                autoComplete="new-password"
+              />
+            </div>
+
+            <div className="glass-card glass-card--muted" style={{ padding: '1rem' }}>
+              <strong style={{ fontSize: '0.85rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--text-subtle)' }}>
+                Password requirements
+              </strong>
+              <ul style={{ margin: '0.75rem 0 0', paddingLeft: '1.2rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                <li style={{ color: passwordChecks.length ? '#22c55e' : '#f59e0b' }}>At least 8 characters</li>
+                <li style={{ color: passwordChecks.upper ? '#22c55e' : '#f59e0b' }}>One uppercase letter</li>
+                <li style={{ color: passwordChecks.lower ? '#22c55e' : '#f59e0b' }}>One lowercase letter</li>
+                <li style={{ color: passwordChecks.number ? '#22c55e' : '#f59e0b' }}>One number</li>
+                <li style={{ color: passwordChecks.special ? '#22c55e' : '#f59e0b' }}>One special character</li>
+              </ul>
+            </div>
+
+            <div className="input-group">
+              <label htmlFor="register-confirm" className="input-label">Confirm password</label>
+              <input
+                id="register-confirm"
+                name="confirm"
+                className="auth-input"
+                type="password"
+                value={form.confirm}
+                onChange={handleChange}
+                placeholder="Repeat password"
+                required
+                autoComplete="new-password"
+              />
+              {!passwordsMatch && form.confirm && (
+                <span style={{ color: '#fbbf24', fontSize: '0.85rem' }}>Passwords do not match</span>
+              )}
+            </div>
+
+            <div className="auth-recaptcha" aria-live="polite">
+              <div className="auth-recaptcha__inner" ref={recaptchaRef} />
+            </div>
+
+            {error && (
+              <div className="empty-state" style={{ borderStyle: 'solid', color: '#f87171' }}>
+                {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="empty-state" style={{ borderStyle: 'solid', color: '#22c55e' }}>
+                {success}
+              </div>
+            )}
+
+            <div className="page-actions" style={{ justifyContent: 'space-between' }}>
+              <button type="button" className="btn btn-secondary" onClick={handleBack}>
+                Back
+              </button>
+              <button type="submit" className="btn btn-primary">
+                Create account
+              </button>
+            </div>
+          </form>
+        )}
+
+        <p style={{ color: 'var(--text-subtle)', fontSize: '0.9rem', margin: 0 }}>
+          Already have an account?{' '}
+          <button type="button" className="auth-switch" onClick={onSwitchToLogin}>
+            Sign in
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default Register;
+

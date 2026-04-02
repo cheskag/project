@@ -1,0 +1,687 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
+import { motion } from 'framer-motion';
+import Navbar from '../components/Navbar';
+
+axios.defaults.baseURL = axios.defaults.baseURL || 'http://localhost:5000';
+axios.defaults.timeout = axios.defaults.timeout || 10000;
+
+const modalStyles = {
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.65)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: '1.5rem',
+    zIndex: 1000,
+  },
+  card: {
+    width: '100%',
+    maxWidth: '480px',
+    backgroundColor: '#0f172a',
+    borderRadius: '18px',
+    border: '1px solid rgba(148, 163, 184, 0.3)',
+    boxShadow: '0 20px 60px rgba(15, 23, 42, 0.45)',
+    padding: '2rem',
+    position: 'relative',
+    color: '#e2e8f0',
+  },
+  close: {
+    position: 'absolute',
+    top: '1rem',
+    right: '1rem',
+    border: 'none',
+    background: 'transparent',
+    color: '#94a3b8',
+    fontSize: '1.35rem',
+    cursor: 'pointer',
+  },
+  footer: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: '0.75rem',
+    marginTop: '1.5rem',
+  },
+  input: {
+    width: '100%',
+    padding: '0.75rem 1rem',
+    borderRadius: '12px',
+    border: '1px solid rgba(148, 163, 184, 0.3)',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    color: '#e2e8f0',
+    fontSize: '1rem',
+    marginBottom: '1rem',
+  },
+  textarea: {
+    width: '100%',
+    minHeight: '140px',
+    padding: '0.75rem 1rem',
+    borderRadius: '12px',
+    border: '1px solid rgba(148, 163, 184, 0.3)',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    color: '#e2e8f0',
+    fontSize: '1rem',
+    resize: 'vertical',
+  },
+};
+
+const formatTimeAgo = (timestamp) => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const secondsElapsed = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (secondsElapsed < 60) return 'Just now';
+  if (secondsElapsed < 3600) {
+    const minutes = Math.floor(secondsElapsed / 60);
+    return `${minutes}m ago`;
+  }
+  if (secondsElapsed < 86400) {
+    const hours = Math.floor(secondsElapsed / 3600);
+    return `${hours}h ago`;
+  }
+  const days = Math.floor(secondsElapsed / 86400);
+  if (days < 7) {
+    return `${days}d ago`;
+  }
+  const weeks = Math.floor(days / 7);
+  if (weeks < 4) {
+    return `${weeks}w ago`;
+  }
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+};
+
+const Community = () => {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showPostModal, setShowPostModal] = useState(false);
+  const [showGuidelinesModal, setShowGuidelinesModal] = useState(false);
+  const [showCommentsModal, setShowCommentsModal] = useState(false);
+  const [activePostId, setActivePostId] = useState(null);
+  const [newPost, setNewPost] = useState({ content: '' });
+  const [commentForm, setCommentForm] = useState({ content: '' });
+
+  const authToken =
+    typeof window !== 'undefined' ? window.localStorage.getItem('token') || '' : '';
+  const storedFullname =
+    typeof window !== 'undefined' ? window.localStorage.getItem('userFullname') || '' : '';
+  const storedEmail =
+    typeof window !== 'undefined' ? window.localStorage.getItem('userEmail') || '' : '';
+  const viewerUserId =
+    typeof window !== 'undefined' ? window.localStorage.getItem('userId') || '' : '';
+  const isViewerAdmin =
+    typeof window !== 'undefined' ? window.localStorage.getItem('isAdmin') === 'true' : false;
+  const viewerDisplayName =
+    storedFullname.trim() ||
+    (storedEmail.includes('@') ? storedEmail.split('@')[0] : storedEmail) ||
+    'You';
+
+  const adaptPost = (post) => ({
+    id: post.id,
+    author: post.displayName || 'Member',
+    authorId: post.authorId || '',
+    content: post.content,
+    likes: Number(post.reactionCount || 0),
+    time: formatTimeAgo(post.createdAt),
+    createdAt: post.createdAt,
+    viewerHasReacted: Boolean(post.viewerHasReacted),
+    comments: Array.isArray(post.comments)
+      ? post.comments.map((comment) => ({
+          id: comment.commentId,
+          author: comment.displayName || 'Member',
+           userId: comment.userId || '',
+          content: comment.content,
+          time: formatTimeAgo(comment.createdAt),
+          createdAt: comment.createdAt,
+        }))
+      : [],
+  });
+
+  const fetchPosts = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      if (!authToken) {
+        throw new Error('AUTH_REQUIRED');
+      }
+      const response = await axios.get('/api/community/posts', {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      const fetchedPosts = (response.data?.posts || []).map(adaptPost);
+      setPosts(fetchedPosts);
+      setError('');
+    } catch (err) {
+      console.error('Failed to load community posts', err);
+      if (err.message === 'AUTH_REQUIRED' || err.response?.status === 401) {
+        setError('You must be signed in to view the community discussions.');
+        setPosts([]);
+      } else {
+        setError('Unable to load community posts right now.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [authToken]);
+
+  useEffect(() => {
+    fetchPosts();
+  }, [fetchPosts]);
+
+  const likedPostIds = useMemo(
+    () => posts.filter((post) => post.viewerHasReacted).map((post) => post.id),
+    [posts],
+  );
+
+  const activePost = posts.find((post) => post.id === activePostId) || null;
+
+  const handlePostSubmit = async (event) => {
+    event.preventDefault();
+
+    const content = newPost.content.trim();
+
+    if (!content) {
+      setError('Please share something before posting.');
+      return;
+    }
+
+    if (!authToken) {
+      setError('You need to be signed in to post.');
+      return;
+    }
+
+    try {
+      const response = await axios.post(
+        '/api/community/posts',
+        { content },
+        { headers: { Authorization: `Bearer ${authToken}` } },
+      );
+      const createdPost = adaptPost(response.data?.post);
+      setPosts((prev) => [createdPost, ...prev]);
+      setError('');
+      setNewPost({ content: '' });
+    setShowPostModal(false);
+    } catch (err) {
+      console.error('Failed to submit post', err);
+      setError('Unable to submit your post right now. Please try again later.');
+    }
+  };
+
+  const handleToggleLike = async (postId) => {
+    if (!authToken) {
+      setError('You need to be signed in to react.');
+      return;
+    }
+    try {
+      const response = await axios.post(
+        `/api/community/posts/${postId}/reactions`,
+        {},
+        { headers: { Authorization: `Bearer ${authToken}` } },
+      );
+      const updatedPost = adaptPost(response.data?.post);
+      setPosts((prev) => prev.map((post) => (post.id === postId ? updatedPost : post)));
+      setError('');
+    } catch (err) {
+      console.error('Failed to toggle reaction', err);
+      setError('Unable to update your reaction right now.');
+    }
+  };
+
+  const handleOpenComments = (postId) => {
+    setActivePostId(postId);
+    setCommentForm({ content: '' });
+    setShowCommentsModal(true);
+  };
+
+  const handleCommentSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!activePost) {
+      return;
+    }
+
+    const content = commentForm.content.trim();
+
+    if (!content) {
+      setError('Please enter a comment before submitting.');
+      return;
+    }
+
+    if (!authToken) {
+      setError('You need to be signed in to comment.');
+      return;
+    }
+
+    try {
+      const response = await axios.post(
+        `/api/community/posts/${activePost.id}/comments`,
+        { content },
+        { headers: { Authorization: `Bearer ${authToken}` } },
+      );
+      const updatedPost = adaptPost(response.data?.post);
+      setPosts((prev) => prev.map((post) => (post.id === updatedPost.id ? updatedPost : post)));
+      setError('');
+      setCommentForm({ content: '' });
+    } catch (err) {
+      console.error('Failed to submit comment', err);
+      setError('Unable to submit your comment right now. Please try again later.');
+    }
+  };
+
+  const handleDeletePost = async (postId) => {
+    if (!authToken) {
+      setError('You need to be signed in to delete a post.');
+      return;
+    }
+    const target = posts.find((post) => post.id === postId);
+    const matchesDisplayName =
+      target &&
+      viewerDisplayName !== 'You' &&
+      target.author?.toLowerCase() === viewerDisplayName.toLowerCase();
+    const canDelete =
+      target &&
+      ((viewerUserId && target.authorId === viewerUserId) ||
+        matchesDisplayName ||
+        isViewerAdmin);
+    if (!canDelete) {
+      setError('You can only delete your own post.');
+      return;
+    }
+    const confirmed = window.confirm('Delete this post? This cannot be undone.');
+    if (!confirmed) return;
+    try {
+      await axios.delete(`/api/community/posts/${postId}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      setPosts((prev) => prev.filter((post) => post.id !== postId));
+      if (activePostId === postId) {
+        setShowCommentsModal(false);
+        setActivePostId(null);
+      }
+      setError('');
+    } catch (err) {
+      console.error('Failed to delete post', err);
+      setError('Unable to delete this post right now.');
+    }
+  };
+
+  const handleDeleteComment = async (postId, commentId) => {
+    if (!authToken) {
+      setError('You need to be signed in to delete a comment.');
+      return;
+    }
+    const targetPost = posts.find((post) => post.id === postId);
+    const targetComment = targetPost?.comments.find((comment) => comment.id === commentId);
+    const commentMatchesDisplayName =
+      targetComment &&
+      viewerDisplayName !== 'You' &&
+      targetComment.author?.toLowerCase() === viewerDisplayName.toLowerCase();
+    const canDelete =
+      targetComment &&
+      ((viewerUserId && targetComment.userId === viewerUserId) ||
+        (viewerUserId && targetPost.authorId === viewerUserId) ||
+        commentMatchesDisplayName ||
+        (targetPost &&
+          viewerUserId &&
+          targetPost.authorId === viewerUserId) ||
+        isViewerAdmin);
+    if (!canDelete) {
+      setError('You can only delete your own comment.');
+      return;
+    }
+    const confirmed = window.confirm('Delete this comment? This cannot be undone.');
+    if (!confirmed) return;
+
+    try {
+      const response = await axios.delete(
+        `/api/community/posts/${postId}/comments/${commentId}`,
+        { headers: { Authorization: `Bearer ${authToken}` } },
+      );
+      const updatedPost = adaptPost(response.data?.post);
+      setPosts((prev) => prev.map((post) => (post.id === updatedPost.id ? updatedPost : post)));
+      setError('');
+    } catch (err) {
+      console.error('Failed to delete comment', err);
+      setError('Unable to delete this comment right now.');
+    }
+  };
+
+  return (
+    <>
+      <Navbar />
+      <motion.section
+        className="page-shell"
+        initial={{ opacity: 0, y: 32 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.65 }}
+        aria-labelledby="community-heading"
+      >
+        <header className="page-header">
+          <span className="page-header__eyebrow">Community hub</span>
+          <h1 id="community-heading" className="page-header__title">Community Forum</h1>
+          <p className="page-header__subtitle">
+            Join discussions, share insights, and learn from fellow crypto enthusiasts in a respectful, inclusive space.
+          </p>
+          <div className="page-actions" style={{ justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowGuidelinesModal(true)}
+            >
+              Community guidelines
+            </button>
+          </div>
+        </header>
+
+        <section className="glass-card content-panel" aria-label="Recent discussions">
+          <div className="page-actions" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+            <h2 className="content-panel__title" style={{ margin: 0 }}>Latest threads</h2>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ whiteSpace: 'nowrap' }}
+              onClick={() => {
+                if (!authToken) {
+                  setError('Please sign in to create a post.');
+                  return;
+                }
+                setNewPost({ content: '' });
+                setShowPostModal(true);
+              }}
+            >
+              + New post
+            </button>
+          </div>
+
+          {error ? (
+            <div className="empty-state" style={{ marginTop: '1rem' }}>{error}</div>
+          ) : null}
+
+          {loading ? (
+            <div className="empty-state">Loading discussions…</div>
+          ) : posts.length ? (
+            <div className="content-panel" role="list">
+              {posts.map((post, index) => (
+                <motion.article
+                  key={post.id}
+                  role="listitem"
+                  className="glass-card glass-card--muted"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.15 * (index + 1) }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{post.author}</h3>
+                      <p className="content-panel__text" style={{ marginTop: '0.35rem' }}>{post.content}</p>
+                    </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span className="pill" aria-label={`posted ${post.time}`}>{post.time}</span>
+                        {((viewerUserId && post.authorId === viewerUserId) ||
+                          (viewerDisplayName !== 'You' &&
+                            post.author?.toLowerCase() === viewerDisplayName.toLowerCase()) ||
+                          isViewerAdmin) && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ padding: '0.3rem 0.75rem', color: '#f87171' }}
+                          onClick={() => handleDeletePost(post.id)}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="chip-row" style={{ marginTop: '1rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      style={{ padding: '0.45rem 1rem' }}
+                      onClick={() => handleToggleLike(post.id)}
+                      aria-pressed={likedPostIds.includes(post.id)}
+                    >
+                      {likedPostIds.includes(post.id) ? '💖' : '🤍'} {post.likes}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      style={{ padding: '0.45rem 1rem' }}
+                      onClick={() => {
+                        if (!authToken) {
+                          setError('Please sign in to view and add comments.');
+                          return;
+                        }
+                        handleOpenComments(post.id);
+                      }}
+                    >
+                      💬 Comment {post.comments?.length ? `(${post.comments.length})` : ''}
+                    </button>
+                  </div>
+                </motion.article>
+              ))}
+            </div>
+          ) : (
+            <div className="empty-state" style={{ marginTop: '1rem' }}>
+              No discussions yet. Be the first to start a conversation!
+            </div>
+          )}
+        </section>
+      </motion.section>
+
+      {showPostModal && (
+        <div style={modalStyles.overlay} role="dialog" aria-modal="true" aria-labelledby="new-post-title">
+          <div style={modalStyles.card}>
+            <button
+              type="button"
+              style={modalStyles.close}
+              aria-label="Close new post dialog"
+              onClick={() => setShowPostModal(false)}
+            >
+              ×
+            </button>
+            <h2 id="new-post-title" style={{ marginBottom: '1rem' }}>
+              Share something with the community
+            </h2>
+            <p style={{ marginBottom: '1rem', color: '#94a3b8' }}>
+              Posting as <strong>{viewerDisplayName}</strong>
+            </p>
+            <form onSubmit={handlePostSubmit}>
+              <label htmlFor="post-content" style={{ display: 'block', marginBottom: '0.35rem', color: '#94a3b8' }}>
+                Your post
+              </label>
+              <textarea
+                id="post-content"
+                name="content"
+                placeholder="What would you like to share?"
+                value={newPost.content}
+                onChange={(event) => setNewPost({ content: event.target.value })}
+                style={modalStyles.textarea}
+                required
+              />
+              <div style={modalStyles.footer}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setNewPost({ content: '' });
+                    setShowPostModal(false);
+                  }}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Post
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showGuidelinesModal && (
+        <div style={modalStyles.overlay} role="dialog" aria-modal="true" aria-labelledby="community-guidelines-title">
+          <div style={modalStyles.card}>
+            <button
+              type="button"
+              style={modalStyles.close}
+              aria-label="Close community guidelines dialog"
+              onClick={() => setShowGuidelinesModal(false)}
+            >
+              ×
+            </button>
+            <h2 id="community-guidelines-title" style={{ marginBottom: '1rem' }}>
+              Community guidelines
+            </h2>
+            <p style={{ marginBottom: '0.75rem', color: '#cbd5f5' }}>
+              We foster a respectful, inclusive environment for everyone exploring the crypto space. Please keep these in mind:
+            </p>
+            <ul style={{ paddingLeft: '1.2rem', display: 'grid', gap: '0.5rem' }}>
+              <li>Lead with kindness. Disagree with ideas, not people.</li>
+              <li>Stay on topic. Keep discussions focused on crypto and investing.</li>
+              <li>Back claims with sources when possible.</li>
+              <li>No spam, shilling, or referral links.</li>
+              <li>Protect privacy. Never share sensitive personal data.</li>
+            </ul>
+            <div style={modalStyles.footer}>
+              <button type="button" className="btn btn-primary" onClick={() => setShowGuidelinesModal(false)}>
+                Understood
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCommentsModal && activePost && (
+        <div style={modalStyles.overlay} role="dialog" aria-modal="true" aria-labelledby="comments-title">
+          <div style={modalStyles.card}>
+            <button
+              type="button"
+              style={modalStyles.close}
+              aria-label="Close comments dialog"
+              onClick={() => {
+                setShowCommentsModal(false);
+                setActivePostId(null);
+                setCommentForm({ content: '' });
+              }}
+            >
+              ×
+            </button>
+            <h2 id="comments-title" style={{ marginBottom: '0.6rem' }}>
+              Discussion with {activePost.author}
+            </h2>
+            <p style={{ color: '#94a3b8', marginBottom: '1rem' }}>{activePost.content}</p>
+
+            <div
+              style={{
+                maxHeight: '220px',
+                overflowY: 'auto',
+                marginBottom: '1.25rem',
+                paddingRight: '0.25rem',
+                display: 'grid',
+                gap: '0.85rem',
+              }}
+            >
+              {activePost.comments.length ? (
+                activePost.comments.map((comment) => {
+                  const commentMatchesDisplayName =
+                    viewerDisplayName !== 'You' &&
+                    comment.author?.toLowerCase() === viewerDisplayName.toLowerCase();
+                  const postMatchesDisplayName =
+                    viewerDisplayName !== 'You' &&
+                    activePost.author?.toLowerCase() === viewerDisplayName.toLowerCase();
+                  const canDeleteComment =
+                    (viewerUserId && comment.userId === viewerUserId) ||
+                    (viewerUserId && activePost.authorId === viewerUserId) ||
+                    commentMatchesDisplayName ||
+                    postMatchesDisplayName ||
+                    isViewerAdmin;
+                  return (
+                  <div
+                    key={comment.id}
+                    style={{
+                      backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(148, 163, 184, 0.25)',
+                      padding: '0.85rem 1rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.45rem', gap: '0.75rem' }}>
+                      <strong style={{ color: '#e2e8f0' }}>{comment.author}</strong>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ color: '#64748b', fontSize: '0.85rem' }}>{comment.time}</span>
+                        {canDeleteComment && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{ padding: '0.2rem 0.6rem', fontSize: '0.85rem', color: '#f87171' }}
+                            onClick={() => handleDeleteComment(activePost.id, comment.id)}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p style={{ margin: 0, color: '#cbd5f5', lineHeight: 1.5 }}>{comment.content}</p>
+                  </div>
+                  );
+                })
+              ) : (
+                <div
+                  style={{
+                    textAlign: 'center',
+                    padding: '1.25rem',
+                    borderRadius: '12px',
+                    border: '1px dashed rgba(148, 163, 184, 0.3)',
+                    color: '#94a3b8',
+                  }}
+                >
+                  No comments yet. Be the first to share your thoughts!
+                </div>
+              )}
+            </div>
+
+            <form onSubmit={handleCommentSubmit}>
+              <p style={{ marginBottom: '0.75rem', color: '#94a3b8' }}>
+                Commenting as <strong>{viewerDisplayName}</strong>
+              </p>
+              <label htmlFor="comment-content" style={{ display: 'block', marginBottom: '0.35rem', color: '#94a3b8' }}>
+                Your comment
+              </label>
+              <textarea
+                id="comment-content"
+                name="commentContent"
+                placeholder="Share your thoughts…"
+                value={commentForm.content}
+                onChange={(event) => setCommentForm({ content: event.target.value })}
+                style={{ ...modalStyles.textarea, minHeight: '110px' }}
+                required
+              />
+              <div style={modalStyles.footer}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setShowCommentsModal(false);
+                    setActivePostId(null);
+                  }}
+                >
+                  Close
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Add comment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+export default Community;
